@@ -35,13 +35,14 @@
 #include "sensor_msgs/NavSatFix.h"
 #include "nav_msgs/Odometry.h"
 #include "geometry_msgs/PoseStamped.h"
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "sensor_msgs/Temperature.h"
 #include "sensor_msgs/FluidPressure.h"
 #include "std_srvs/Empty.h"
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-ros::Publisher pubIMU, pubMag, pubGPS, pubOdom, pubPose, pubTemp, pubPres;
+ros::Publisher pubIMU, pubMag, pubGPS, pubOdom, pubPose, pubPoseWithCov, pubTemp, pubPres;
 ros::ServiceServer resetOdomSrv;
 
 //Unused covariances initilized to zero's
@@ -113,6 +114,7 @@ int main(int argc, char *argv[])
     pubGPS = n.advertise<sensor_msgs::NavSatFix>("vectornav/GPS", 1000);
     pubOdom = n.advertise<nav_msgs::Odometry>("vectornav/Odom", 1000);
     pubPose = n.advertise<geometry_msgs::PoseStamped>("vectornav/Pose", 1000);
+    pubPoseWithCov = n.advertise<geometry_msgs::PoseWithCovarianceStamped>("vectornav/PoseWithCov", 1000);
     pubTemp = n.advertise<sensor_msgs::Temperature>("vectornav/Temp", 1000);
     pubPres = n.advertise<sensor_msgs::FluidPressure>("vectornav/Pres", 1000);
 
@@ -467,7 +469,48 @@ void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
                 msgPose.pose.orientation.z = q[2];
                 msgPose.pose.orientation.w = q[3];
             }
-            pubOdom.publish(msgPose);
+            pubPose.publish(msgPose);
+        }
+
+        // PoseWithCov
+        if (pubPoseWithCov.getNumSubscribers() > 0)
+        {
+            geometry_msgs::PoseWithCovarianceStamped msgPoseWithCov;
+            msgPoseWithCov.header.stamp = msgIMU.header.stamp;
+            msgPoseWithCov.header.frame_id = msgIMU.header.frame_id;
+            vec3d pos = cd.positionEstimatedEcef();
+
+            if (!initial_position_set)
+            {
+                initial_position_set = true;
+                initial_position.x = pos[0];
+                initial_position.y = pos[1];
+                initial_position.z = pos[2];
+            }
+
+            msgPoseWithCov.pose.pose.position.x = pos[0] - initial_position[0];
+            msgPoseWithCov.pose.pose.position.y = pos[1] - initial_position[1];
+            msgPoseWithCov.pose.pose.position.z = pos[2] - initial_position[2];
+
+            if (cd.hasQuaternion())
+            {
+                vec4f q = cd.quaternion();
+
+                msgPoseWithCov.pose.pose.orientation.x = q[0];
+                msgPoseWithCov.pose.pose.orientation.y = q[1];
+                msgPoseWithCov.pose.pose.orientation.z = q[2];
+                msgPoseWithCov.pose.pose.orientation.w = q[3];
+            }
+
+            if (cd.hasAttitudeUncertainty())
+            {
+                vec3f orientationStdDev = cd.attitudeUncertainty();
+                msgPoseWithCov.pose.covariance[21] = orientationStdDev[2]*orientationStdDev[2]*M_PI/180; // Convert to radians pitch
+                msgPoseWithCov.pose.covariance[28] = orientationStdDev[1]*orientationStdDev[1]*M_PI/180; // Convert to radians Roll
+                msgPoseWithCov.pose.covariance[35] = orientationStdDev[0]*orientationStdDev[0]*M_PI/180; // Convert to radians Yaw
+            }
+
+            pubPoseWithCov.publish(msgPoseWithCov);
         }
     }
 
