@@ -36,6 +36,7 @@
 #include "nav_msgs/Odometry.h"
 #include "geometry_msgs/PoseStamped.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include "geometry_msgs/Vector3Stamped.h"
 #include "sensor_msgs/Temperature.h"
 #include "sensor_msgs/FluidPressure.h"
 #include "std_srvs/Empty.h"
@@ -78,6 +79,7 @@ bool frame_based_enu;
 // Initial position after getting a GPS fix.
 vec3d initial_position;
 bool initial_position_set = false;
+bool convert_euler_to_degrees = true;
 
 // Basic loop so we can initilize our covariance parameters above
 boost::array<double, 9ul> setCov(XmlRpc::XmlRpcValue rpc){
@@ -115,6 +117,7 @@ int main(int argc, char *argv[])
     pubOdom = n.advertise<nav_msgs::Odometry>("vectornav/Odom", 1000);
     pubPose = n.advertise<geometry_msgs::PoseStamped>("vectornav/Pose", 1000);
     pubPoseWithCov = n.advertise<geometry_msgs::PoseWithCovarianceStamped>("vectornav/PoseWithCov", 1000);
+    pubEuler = n.advertise<geometry_msgs::Vector3Stamped>("vectornav/AttitudeEuler", 1000);
     pubTemp = n.advertise<sensor_msgs::Temperature>("vectornav/Temp", 1000);
     pubPres = n.advertise<sensor_msgs::FluidPressure>("vectornav/Pres", 1000);
 
@@ -511,6 +514,31 @@ void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
             }
 
             pubPoseWithCov.publish(msgPoseWithCov);
+        }
+        
+        // pubEuler
+        if (pubEuler.getNumSubscribers() > 0)
+        {
+            geometry_msgs::Vector3Stamped euler_msg;
+            euler_msg.header.stamp = msgIMU.header.stamp;
+            euler_msg.header.frame_id = msgIMU.header.frame_id;
+
+            if (cd.hasQuaternion())
+            {
+                vec4f q = cd.quaternion();
+                tf2::Quaternion tf2_quat(q[0],q[1],q[2],q[3]);
+
+                tf2::Matrix3x3(tf2_quat).getEulerYPR(euler_msg.vector.z, euler_msg.vector.y, euler_msg.vector.x);
+
+                if (convert_euler_to_degrees) 
+                {
+                    euler_msg.vector.x = euler_msg.vector.x*180/M_PI;
+                    euler_msg.vector.y = euler_msg.vector.y*180/M_PI;
+                    euler_msg.vector.z = euler_msg.vector.z*180/M_PI;
+                }
+            }
+
+            pubEuler.publish(euler_msg);
         }
     }
 
