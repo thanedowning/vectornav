@@ -43,7 +43,7 @@
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-ros::Publisher pubIMU, pubMag, pubGPS, pubOdom, pubPose, pubPoseWithCov, pubTemp, pubPres;
+ros::Publisher pubIMU, pubMag, pubGPS, pubOdom, pubPose, pubPoseWithCov, pubTemp, pubPres, pubEuler;
 ros::ServiceServer resetOdomSrv;
 
 //Unused covariances initilized to zero's
